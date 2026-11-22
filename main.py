@@ -10,8 +10,9 @@ Copies the bundled front-page image (entry.png, in this repository) to
   * exactly one IEND chunk, last, with no trailing bytes
   * total size at most 1 MiB (1048576 bytes)
 
-After the copy, the written file is re-read and its SHA-256 is compared
-with the source file's, so a partial or altered copy fails loudly.
+After the copy, the written file is re-read, re-validated as a PNG in
+full, and its SHA-256 is compared with the source file's, so a partial
+or altered copy fails loudly.
 
 Python 3.13, standard library only. No network, no clock, no randomness:
 two runs write identical bytes.
@@ -96,8 +97,15 @@ def main():
     os.makedirs(os.path.dirname(DST), exist_ok=True)
     with open(DST, "wb") as fh:
         fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
     with open(DST, "rb") as fh:
         written = fh.read()
+    if len(written) != len(data):
+        fail(f"size mismatch after copy: wrote {len(written)}, want {len(data)}")
+    # Re-validate the written bytes as a PNG, not just their hash, so a
+    # copy that is byte-identical but structurally broken still fails.
+    check_png(written)
     if hashlib.sha256(written).hexdigest() != digest:
         fail("SHA-256 mismatch after copy")
     print(f"main.py: wrote {DST} ({len(data)} bytes, {width}x{height}, "
